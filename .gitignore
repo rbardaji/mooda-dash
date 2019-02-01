@@ -104,7 +104,7 @@ venv.bak/
 .mypy_cache/
 
 # vscode
-.vscode/
+.vscode
 
 # Other python stripts
 tutos.py

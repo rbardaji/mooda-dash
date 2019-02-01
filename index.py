@@ -5,7 +5,7 @@ from dash.dependencies import Input, Output
 import dash_core_components as dcc
 import dash_html_components as html
 from app import app
-from tabs import source_data
+from tabs import source_data, code_tab
 
 app.layout = html.Div(
     [
@@ -61,7 +61,7 @@ def render_content(tab):
     elif tab == "analysis_tab":
         return 'analysis'
     elif tab == "code_tab":
-        return 'code'
+        return code_tab.LAYOUT
     else:
         return 'source'
 
