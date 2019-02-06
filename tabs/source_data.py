@@ -1,12 +1,19 @@
 """ All related to the content of the source tab"""
 # -*- coding: utf-8 -*-
+import json
+import base64
+import io
 import dash_html_components as html
 import dash_core_components as dcc
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 import dash_table
+from mooda import WaterFrame
 from app import app, indicator
 
 
+_DEBUG = True
+
+PATH_EMSO = r"C:\Users\rbard\Google Drive\ok\EMSO-ERIC\server\www\html\data"
 # The info is saved into dicts. It is not the best option. They could be saved into a DB
 PARAMETERS = {
     'obsea': {
@@ -162,6 +169,7 @@ def modal():
                                         for key, value in OBSERVATORY.items()
                                     ],
                                     value=DEF_OBSERVATORY,
+                                    clearable=False,
                                 ),
                                 dcc.Dropdown(
                                     id='instrument_selection',
@@ -169,7 +177,8 @@ def modal():
                                         {'label': key, 'value': value}
                                         for key, value in INSTRUMENTS[DEF_OBSERVATORY].items()
                                     ],
-                                    value=DEF_INSTRUMENT
+                                    value=DEF_INSTRUMENT,
+                                    clearable=False,
                                 ),
                                 html.Button('Add', id='button_emso'),
                             ]
@@ -187,19 +196,43 @@ def modal():
     return layout_modal
 
 
-def add_files_to_table(source, filenames):
+def add_files_to_table(list_of_files):
     """ Add the a new file name and size to the table"""
 
     return html.Div([
         dash_table.DataTable(
-            data=[{'source': source, 'file_name': filename, 'file_size': 0}
-                  for filename in filenames],
+            data=list_of_files,
             columns=[
                 {'name': 'Source', 'id': 'source'},
                 {'name': 'File name', 'id': 'file_name'},
-                {'name': 'Size', 'id': 'file_size'}]
+                {'name': 'Memory usage (MBytes)', 'id': 'file_size'}]
         ),
     ])
+
+
+def size_file(filename, content=None):
+    """ It returns the memory usage of a WaterFrame"""
+    if _DEBUG:
+        print("In size_file():")
+        print("  - filename:", filename)
+
+    if content is None:
+        file_location = filename
+    else:
+        _content_type, content_string = content.split(',')
+        decoded = base64.b64decode(content_string)
+        file_location = io.BytesIO(decoded)
+
+    size = 0
+    wf_file = WaterFrame()
+    if 'nc' in filename:
+        # Assume that the user uploaded a netcdf file
+        wf_file.from_netcdf(file_location)
+    elif 'csv' in filename:
+        # Assume that the user uploaded a csv file
+        wf_file.from_csv(file_location)
+    size = wf_file.memory_usage()
+    return size
 
 
 LAYOUT = [
@@ -231,9 +264,10 @@ LAYOUT = [
         [
             indicator("Sources", "source_indicator"),
             indicator("Number of files", "number_of_files_indicator"),
-            indicator("Total size", "total_size_indicator"),
+            indicator("Total size (MBytes)", "total_size_indicator"),
         ],
         className="row",
+        style={"marginBottom": "10"}
     ),
 
     # Table
@@ -261,19 +295,190 @@ def close_modal_callback(n_clicks_close, n_clicks_emso, n_clicks_pangea, filenam
 
 
 @app.callback(Output('output_table', 'children'),
-              [Input('upload_file', 'filename')])
-def update_table(list_of_names):
+              [Input('table_content_files', 'children'),
+               Input('table_content_pangea', 'children'),
+               Input('table_content_emso', 'children')])
+def update_table(files, pangea, emso):
     """ Return a table with new info"""
     children = None
-    if list_of_names is not None:
-        children = add_files_to_table("File", list_of_names)
+    list_files = []
+    if files:
+        list_files = json.loads(files)
+    if pangea:
+        list_files += json.loads(pangea)
+    if emso:
+        list_files += json.loads(emso)
+    if list_files:
+        children = add_files_to_table(list_files)
     return children
 
 
 @app.callback(
-    Output("number_of_files_indicator", "children"), [Input('upload_file', 'filename')])
-def number_of_files_indicator_callback(filenames):
+    Output("number_of_files_indicator", "children"),
+    [Input('table_content_files', 'children'),
+     Input('table_content_pangea', 'children'),
+     Input('table_content_emso', 'children')])
+def number_of_files_indicator_callback(content_files, content_pangea, content_emso):
     """It updates the number of files indicator"""
+    number_files = 0
+    number_pangea = 0
+    number_emso = 0
+    if content_files:
+        files = json.loads(content_files)
+        number_files = len(files)
+    if content_pangea:
+        files = json.loads(content_pangea)
+        number_pangea = len(files)
+    if content_emso:
+        files = json.loads(content_emso)
+        number_emso = len(files)
+    number_of_files = number_files + number_pangea + number_emso
+    return number_of_files
+
+
+@app.callback(
+    Output('table_content_pangea', 'children'),
+    [Input('button_pangea', 'n_clicks')],
+    [State('table_content_pangea', 'children'),
+     State('id_pangea', 'value')])
+def update_table_content_pangea(pangea_clicks, actual_files, id_pangea):
+    """
+    It updates the children of the div with id table_content_pangea with a JSON of the list of
+    files added from Pangea
+    """
+    if _DEBUG:
+        print("In update_table_content_pangea():")
+        print("  - actual_files:", actual_files)
+        print("  - pangea_clicks", pangea_clicks)
+        print("  - id_pangea", id_pangea)
+    new_content = None
+    list_files = []
+    new_files = []
+    if actual_files:
+        list_files = json.loads(actual_files)
+        if _DEBUG:
+            print("  - list_files:", list_files)
+    if pangea_clicks > 0 and id_pangea > 0:
+        new_files = [{'source': 'Pangea', 'file_name': str(id_pangea), 'file_size': "0"}]
+        if _DEBUG:
+            print("  - new_files:", new_files)
+    list_files += new_files
+    if _DEBUG:
+        print("  - list_files to new_content:", list_files)
+    new_content = json.dumps(list_files)
+    if _DEBUG:
+        print("Out of update_table_content_pangea()")
+    return new_content
+
+
+@app.callback(
+    Output('table_content_files', 'children'),
+    [Input('upload_file', 'contents')],
+    [State('upload_file', 'filename'),
+     State('table_content_files', 'children')])
+def update_table_content_files(content_files, filenames, actual_files):
+    """
+    It updates the children of the div with id table_content_files with a JSON of the list of
+    files added from the PC
+    """
+    if _DEBUG:
+        print("In update_table_content_files():")
+        print("  - filenames:", filenames)
+        print("  - actual_files:", actual_files)
+    new_content = None
+    list_files = []
+    new_files = []
+    if actual_files:
+        list_files = json.loads(actual_files)
+        if _DEBUG:
+            print("  - actual_files:", list_files)
     if filenames:
-        number_of_files = len(filenames)
-        return number_of_files
+        new_files = [{'source': 'File',
+                      'file_name': filename,
+                      'file_size': size_file(filename, content)/1000000}
+                     for filename, content in zip(filenames, content_files)]
+        if _DEBUG:
+            print("    - new_files:", new_files)
+    list_files += new_files
+    if _DEBUG:
+        print("  - new_content:", list_files)
+    new_content = json.dumps(list_files)
+    if _DEBUG:
+        print("Out of update_table_content_files()")
+    return new_content
+
+
+@app.callback(
+    Output('table_content_emso', 'children'),
+    [Input('button_emso', 'n_clicks')],
+    [State('table_content_emso', 'children'),
+     State('observatory_selection', 'value'),
+     State('instrument_selection', 'value')])
+def update_table_content_emso(emso_clicks, actual_files, observatory, instrument):
+    """
+    It updates the children of the div with id table_content_emso with a JSON of the list of
+    files added from EMSO
+    """
+    if _DEBUG:
+        print("In update_table_content_emso():")
+        print("  - emso_clicks:", emso_clicks)
+        print("  - actual_files:", actual_files)
+    new_content = None
+    list_files = []
+    new_files = []
+    if actual_files:
+        list_files = json.loads(actual_files)
+        if _DEBUG:
+            print("  - actual_files:", list_files)
+    if emso_clicks > 0:
+        filename = f'{observatory}_{instrument}'
+        path = fr'{PATH_EMSO}\{observatory}\{DOWNLOAD_FILES[observatory][instrument]}.nc'
+        new_files = [{'source': 'EMSO',
+                      'file_name': filename,
+                      'file_size': size_file(filename=path)/1000000}]
+        if _DEBUG:
+            print("    - new_files:", new_files)
+    list_files += new_files
+    if _DEBUG:
+        print("  - new_content:", list_files)
+    new_content = json.dumps(list_files)
+    if _DEBUG:
+        print("Out of update_table_content_emso()")
+    return new_content
+
+
+@app.callback(
+    Output('source_indicator', 'children'),
+    [Input('table_content_files', 'children'),
+     Input('table_content_pangea', 'children'),
+     Input('table_content_emso', 'children')])
+def sources_indicator_callback(content_files, content_pangea, content_emso):
+    """It updates the number of files indicator"""
+    number_of_sources = 0
+    if content_files:
+        number_of_sources += 1
+    if content_pangea:
+        number_of_sources += 1
+    if content_emso:
+        number_of_sources += 1
+    return number_of_sources
+
+
+@app.callback(
+    Output('total_size_indicator', 'children'),
+    [Input('table_content_files', 'children'),
+     Input('table_content_pangea', 'children'),
+     Input('table_content_emso', 'children')])
+def size_indicator_callback(content_files, content_pangea, content_emso):
+    """It updates the number of files indicator"""
+    total_size = 0
+    files = []
+    if content_files:
+        files = json.loads(content_files)
+    if content_emso:
+        files = json.loads(content_emso)
+    if content_pangea:
+        files = json.loads(content_pangea)
+    for line in files:
+        total_size += line['file_size']
+    return total_size

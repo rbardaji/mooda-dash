@@ -38,5 +38,5 @@ wf
 ```
     '''),
 
-    html.Button("Copy code")
+    html.Button("Copy code", className="button button-primary add")
 ]

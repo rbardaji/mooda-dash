@@ -5,7 +5,7 @@ from dash.dependencies import Input, Output
 import dash_core_components as dcc
 import dash_html_components as html
 from app import app
-from tabs import source_data, code_tab
+from tabs import source_data, code_tab, analysis_tab
 
 app.layout = html.Div(
     [
@@ -36,6 +36,14 @@ app.layout = html.Div(
         # Tab content
         html.Div(id="tab_content", style={"margin": "2% 3%"}),
 
+        # Save content of Source tab
+        # Hidden div inside the app that stores the table content of files
+        html.Div(id='table_content_files', style={'display': 'none'}),
+        # Hidden div inside the app that stores the table content of Pangea
+        html.Div(id='table_content_pangea', style={'display': 'none'}),
+        # Hidden div inside the app that stores the table content of EMSO
+        html.Div(id='table_content_emso', style={'display': 'none'}),
+
         # css
         # html.Link(href="https://use.fontawesome.com/releases/v5.2.0/css/all.css",
         # rel="stylesheet"),
@@ -59,7 +67,7 @@ def render_content(tab):
     if tab == "source_tab":
         return source_data.LAYOUT
     elif tab == "analysis_tab":
-        return 'analysis'
+        return analysis_tab.LAYOUT
     elif tab == "code_tab":
         return code_tab.LAYOUT
     else:
