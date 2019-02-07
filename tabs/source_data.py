@@ -210,10 +210,10 @@ def add_files_to_table(list_of_files):
     ])
 
 
-def size_file(filename, content=None):
+def source_info(filename, content=None):
     """ It returns the memory usage of a WaterFrame"""
     if _DEBUG:
-        print("In size_file():")
+        print("In source_info():")
         print("  - filename:", filename)
 
     if content is None:
@@ -231,8 +231,21 @@ def size_file(filename, content=None):
     elif 'csv' in filename:
         # Assume that the user uploaded a csv file
         wf_file.from_csv(file_location)
-    size = wf_file.memory_usage()
-    return size
+    memory = wf_file.memory_usage()
+    num_parameters = len(wf_file.parameters())
+    metadata_text = wf_file.info_metadata()
+    info_text = str(wf_file)
+    if _DEBUG:
+        print("  - metadata:", metadata_text)
+        print("  - info:", info_text)
+
+    info = {
+        'memory': memory,
+        'num_parameters': num_parameters,
+        'metadata': metadata_text,
+        'wf_info': info_text
+    }
+    return info
 
 
 LAYOUT = [
@@ -393,10 +406,13 @@ def update_table_content_files(content_files, filenames, actual_files):
         if _DEBUG:
             print("  - actual_files:", list_files)
     if filenames:
-        new_files = [{'source': 'File',
-                      'file_name': filename,
-                      'file_size': size_file(filename, content)/1000000}
-                     for filename, content in zip(filenames, content_files)]
+        new_files = []
+        for filename, content in zip(filenames, content_files):
+            info = source_info(filename, content)
+            new_files.append({'source': 'File',
+                              'file_name': filename,
+                              'file_size': info['memory']/1000000,
+                              'num_parameters': info['num_parameters']})
         if _DEBUG:
             print("    - new_files:", new_files)
     list_files += new_files
@@ -433,9 +449,13 @@ def update_table_content_emso(emso_clicks, actual_files, observatory, instrument
     if emso_clicks > 0:
         filename = f'{observatory}_{instrument}'
         path = fr'{PATH_EMSO}\{observatory}\{DOWNLOAD_FILES[observatory][instrument]}.nc'
+        info = source_info(filename=path)
         new_files = [{'source': 'EMSO',
                       'file_name': filename,
-                      'file_size': size_file(filename=path)/1000000}]
+                      'file_size': info['memory']/1000000,
+                      'num_parameters': info['num_parameters'],
+                      'metadata': info['metadata'],
+                      'info': info['wf_info']}]
         if _DEBUG:
             print("    - new_files:", new_files)
     list_files += new_files
